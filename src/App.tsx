@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Upload, Button, Space, Card, Input, message, AutoComplete } from 'antd';
-import { UploadOutlined, LeftOutlined, RightOutlined, RobotOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { UploadOutlined, LeftOutlined, RightOutlined, RobotOutlined, ExclamationCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import * as XLSX from 'xlsx';
 import ReactMarkdown from 'react-markdown';
@@ -400,6 +400,87 @@ function App() {
       }));
     setManualSearchOptions(options);
   };
+
+  // 新增：快速体验按钮处理函数
+  const handleQuickDemo = async () => {
+    try {
+      // 假设内置Excel放在 public/quick-demo.xlsx
+      const res = await fetch('/quick-demo.xlsx');
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const workbook = XLSX.read(e.target?.result, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const models = (jsonData[0] as string[]).slice(1);
+        setModelNames(models);
+        const processedData = (jsonData as string[][]).slice(1).map(row => ({
+          query: row[0],
+          responses: row.slice(1).map(cell => cell === undefined ? '' : cell),
+          scores: new Array(row.length - 1).fill(0),
+          comments: new Array(row.length - 1).fill('')
+        }));
+        setData(processedData);
+        setCurrentQuestionIndex(0);
+        message.success('快速体验数据加载成功！');
+      };
+      reader.readAsBinaryString(blob);
+    } catch (error) {
+      message.error('快速体验数据加载失败！');
+    }
+  };
+
+  // 新首页样式判断：无数据时展示首页美化内容
+  if (data.length === 0) {
+    return (
+      <Layout className="layout" style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)' }}>
+        <Header style={{ background: 'transparent', boxShadow: 'none', padding: 0 }} />
+        <Content style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: '80vh', background: 'transparent' }}>
+          <div style={{ textAlign: 'center', marginTop: 32 }}>
+            <h1 style={{ fontSize: 48, fontWeight: 800, color: '#222', letterSpacing: 2, marginBottom: 16 }}>AI大模型评估系统</h1>
+            <div style={{ fontSize: 22, color: '#4b5563', marginBottom: 40, fontWeight: 500 }}>
+              流式输出、全格式支持、真实体验、AI标签推荐、快速标签检索
+            </div>
+            <Space size={24}>
+              <Upload
+                customRequest={handleFileUpload}
+                showUploadList={false}
+                accept=".xlsx,.xls"
+              >
+                <Button type="primary" size="large" style={{ fontSize: 20, padding: '0 48px', height: 56, borderRadius: 32, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }} icon={<UploadOutlined style={{ fontSize: 24 }} />}>
+                  上传评估表格
+                </Button>
+              </Upload>
+              <Button
+                type="default"
+                size="large"
+                style={{ fontSize: 20, padding: '0 48px', height: 56, borderRadius: 32, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
+                icon={<ThunderboltOutlined style={{ fontSize: 24 }} />} 
+                onClick={handleQuickDemo}
+              >
+                快速体验
+              </Button>
+            </Space>
+          </div>
+          {/* 动画区域整体上移，紧跟主内容 */}
+          <div style={{ width: '80vw', maxWidth: 1200, aspectRatio: '21/9', margin: '40px auto 0', background: '#e0e7ef', borderRadius: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <video
+              src="/animation.mp4"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 24 }}
+              autoPlay
+              loop
+              muted
+              playsInline
+            />
+          </div>
+        </Content>
+        <Footer style={{ textAlign: 'center', background: 'transparent', color: '#94a3b8', fontSize: 15, border: 'none', boxShadow: 'none', marginTop: 0 }}>
+          © {new Date().getFullYear()} AI大模型评估系统
+        </Footer>
+      </Layout>
+    );
+  }
 
   return (
     <Layout className="layout">
