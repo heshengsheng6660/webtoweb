@@ -5,6 +5,7 @@ import type { UploadProps } from 'antd';
 import * as XLSX from 'xlsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
@@ -184,6 +185,22 @@ const lowQualityLabels = [
   { label: '【低质-幻觉-无中生有】', desc: '模型回答了与用户提供信息明显不符的内容，如篡改用户给定的姓名、日期、联系方式等，属于编造不存在的事实，破坏上下文一致性，影响内容可信度与可控性' },
   { label: '【低质-安全-价值观】', desc: '模型回答中性别歧视、种族歧视、反红色主义、社会现象等' },
 ];
+
+// 保证markdown标题格式正确，自动补全换行
+function fixMarkdown(md: string) {
+  if (!md) return '';
+  // 1. 统一所有换行符为\n
+  let fixed = md.replace(/\r\n?/g, '\n');
+  // 2. 替换所有全角空格、不可见空格为普通空格
+  fixed = fixed.replace(/[\u3000\u00A0\u2002\u2003\u2009]/g, ' ');
+  // 3. 保证每个###及以上标题前有空行
+  fixed = fixed.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
+  // 4. 如果开头就是标题，确保前面有空行
+  fixed = fixed.replace(/^(#{1,6} )/gm, '\n$1');
+  // 5. 去除多余的连续空行
+  fixed = fixed.replace(/\n{3,}/g, '\n\n');
+  return fixed.trim();
+}
 
 function App() {
   const [data, setData] = useState<ModelResponse[]>([]);
@@ -589,15 +606,15 @@ function App() {
               <div className="card-section card-query">
                 <h3>Query {currentQuestionIndex + 1}：</h3>
                 <div className="markdown-body card-query-content">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {data[currentQuestionIndex].query}
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                    {fixMarkdown(data[currentQuestionIndex].query)}
                   </ReactMarkdown>
                 </div>
               </div>
               <div className="card-section card-answer">
                 <h4>回答：</h4>
                 <div className="markdown-body card-answer-content">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedResponse}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{fixMarkdown(displayedResponse)}</ReactMarkdown>
                   {isTyping && <span className="typing-cursor">|</span>}
                 </div>
               </div>
