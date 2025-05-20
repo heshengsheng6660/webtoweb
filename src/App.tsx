@@ -170,6 +170,21 @@ const manualSearchTags = [
   { label: '【G高质-对话-态度坚定】', desc: '仅多轮模型能够在不同轮次都保持事实正确性，不会因为用户反问或疑问而改变（原【G高质-可信】）* 反问：对正确事实经得起反问，对正确的内容可以坚持 * 反复：一个问题反复问，对正确的回答不会推翻' }
 ];
 
+// 低质标签体系（独立维护，仅用于低质检测）
+const lowQualityLabels = [
+  { label: '【低质-理解-异常拒答】', desc: '模型对用户需求理解错误，错误地判断问题敏感、违法或无法回答，从而给出不应有的拒答。' },
+  { label: '【低质-理解-答非所问】', desc: '模型未正确理解用户意图，回答内容与问题核心无关，出现明显跑题，且说白话或写作任务严重偏离的情况。' },
+  { label: '【低质-理解-意图误解】', desc: '模型对用户意图理解存在偏差，虽然部分内容相关，但抓住重点、理解方向有偏，导致回答不够贴合需求。常用于较复杂问题场景。' },
+  { label: '【低质-理解-文字内涵】', desc: '模型未能理解文本中的隐含语义或通用信息，错误关联、潜台词、网络梗、脑筋急转弯等语境内涵，导致答非所问、跑题、偏离或应有的互动感缺失。' },
+  { label: '【低质-理解-语种错误】', desc: '模型未正确识别用户提问的语种，导致中文英夹杂配，或英文提问用中文作答，或中文提问却用英文回应，影响可读性与交流体验。' },
+  { label: '【低质-理解-语种错误-中英夹杂】', desc: '在纯中文或纯英文提问中，模型生成的回答出现句子或段落层面的中英夹杂（如一段中文夹杂多句英文），影响阅读连贯性与用户体验。' },
+  { label: '【低质-错误-处理有误】', desc: '适用于通用信息处理任务中，模型回答明显结果错误的情形。包括抽取、分类、总结、解析、判断、推荐、翻译等常见任务中的以下情况：\n抽取：信息遗漏、抓取错位；\n总结：主旨偏离、信息丢益；\n分类：归类错误、维度混淆；\n加工：结构化、排序、去重等处理出错；\n纠错：未能发现或正确纠错；\n解析：语音、语义、句法等解释性任务出错；\n推荐：推荐对象不相关或不合理；\n判断：结论型判断错误；\n翻译：译文错误、漏译、语义偏差等问题；' },
+  { label: '【低质-错误-计算有误】', desc: '模型的回答中计算错误' },
+  { label: '【低质-幻觉-胡言乱语】', desc: '模型回答的内容语义混乱、结构紊乱、无法理解或不可读性，常表现为无意义拼接、重复堆叠、语法失控严重连串常、整体呈现"胡言乱语"状态，完全不可用' },
+  { label: '【低质-幻觉-无中生有】', desc: '模型回答了与用户提供信息明显不符的内容，如篡改用户给定的姓名、日期、联系方式等，属于编造不存在的事实，破坏上下文一致性，影响内容可信度与可控性' },
+  { label: '【低质-安全-价值观】', desc: '模型回答中性别歧视、种族歧视、反红色主义、社会现象等' },
+];
+
 function App() {
   const [data, setData] = useState<ModelResponse[]>([]);
   const [currentModelIndex, setCurrentModelIndex] = useState(0);
@@ -186,6 +201,9 @@ function App() {
   const [streamCache, setStreamCache] = useState<{ [key: string]: { index: number; done: boolean } }>({});
   const [manualSearchValue, setManualSearchValue] = useState('');
   const [manualSearchOptions, setManualSearchOptions] = useState<{ value: string; label: React.ReactNode }[]>([]);
+  const [lowQualityCheckLoading, setLowQualityCheckLoading] = useState(false);
+  const [lowQualityCheckResult, setLowQualityCheckResult] = useState<{ label: string; desc: string; reason: string } | null>(null);
+  const [lowQualityCheckCache, setLowQualityCheckCache] = useState<{ [key: string]: { label: string; desc: string; reason: string } }>({});
 
   // 流式输出效果
   useEffect(() => {
@@ -231,6 +249,11 @@ function App() {
     setFactCheckResult(factCheckCache[cacheKey] || null);
     setQualityCheckResult(qualityCheckCache[cacheKey] || null);
   }, [currentQuestionIndex, currentModelIndex, factCheckCache, qualityCheckCache]);
+
+  // 移除低质检测缓存逻辑，切换模型或问题时清空低质检测结果
+  useEffect(() => {
+    setLowQualityCheckResult(null);
+  }, [currentQuestionIndex, currentModelIndex]);
 
   const handleFileUpload: UploadProps['customRequest'] = async (options) => {
     try {
@@ -378,6 +401,61 @@ function App() {
     else setQualityCheckLoading(false);
   };
 
+  // 低质检测AI函数
+  const handleLowQualityCheck = async () => {
+    setLowQualityCheckLoading(true);
+    setLowQualityCheckResult(null);
+    try {
+      const query = data[currentQuestionIndex].query;
+      const answer = data[currentQuestionIndex].responses[currentModelIndex];
+      const labels = lowQualityLabels;
+      const prompt = `请根据以下低质检测标签体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复\"无符合要求的标签\"。\n\n标签体系：\n${labels.map(l => l.label + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
+      const res = await fetch(DEEPSEEK_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: '你是一个标签自动评估助手。' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1
+        })
+      });
+      const dataRes = await res.json();
+      let labelName = '';
+      let reason = '';
+      let isNone = false;
+      if (dataRes.choices && dataRes.choices[0] && dataRes.choices[0].message && dataRes.choices[0].message.content) {
+        const content = dataRes.choices[0].message.content.trim();
+        if (content.includes('无符合要求的标签') || content.includes('暂未发现对应问题')) {
+          isNone = true;
+        } else {
+          const labelMatch = content.match(/标签名[:：]\s*(.*)/);
+          const reasonMatch = content.match(/理由[:：]\s*([\s\S]*)/);
+          labelName = labelMatch ? labelMatch[1].split('\n')[0].trim() : '';
+          reason = reasonMatch ? reasonMatch[1].trim() : '';
+        }
+      }
+      if (isNone) {
+        setLowQualityCheckResult({ label: '暂未发现对应问题', desc: '', reason: '' });
+      } else {
+        const found = labels.find(l => labelName.includes(l.label));
+        if (found) {
+          setLowQualityCheckResult({ label: found.label, desc: found.desc, reason });
+        } else {
+          setLowQualityCheckResult({ label: labelName || '未识别', desc: '', reason });
+        }
+      }
+    } catch (e) {
+      setLowQualityCheckResult({ label: '检测失败', desc: '', reason: '' });
+    }
+    setLowQualityCheckLoading(false);
+  };
+
   // 标签颜色分类函数
   function getAiLabelClass(label: string) {
     if (label.includes('严重')) return 'ai-label-tag ai-label-severe';
@@ -510,7 +588,12 @@ function App() {
           <Card className="main-card" bodyStyle={{ padding: 0, background: '#fff' }}>
             <div className="card-content">
               <div className="card-section card-query">
-                <h3>Query {currentQuestionIndex + 1}: {data[currentQuestionIndex].query}</h3>
+                <h3>Query {currentQuestionIndex + 1}：</h3>
+                <div className="markdown-body card-query-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {data[currentQuestionIndex].query}
+                  </ReactMarkdown>
+                </div>
               </div>
               <div className="card-section card-answer">
                 <h4>回答：</h4>
@@ -588,6 +671,34 @@ function App() {
                           <div className="ai-reason-box">
                             <ExclamationCircleOutlined className="ai-reason-icon" />
                             <span><b>理由：</b>{qualityCheckResult.reason}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ height: 24 }} />
+                  <div className="ai-check-block">
+                    <div className="ai-check-btn-wrap">
+                      <Button
+                        icon={<RobotOutlined />}
+                        loading={lowQualityCheckLoading}
+                        onClick={handleLowQualityCheck}
+                        disabled={lowQualityCheckLoading}
+                        type="primary"
+                        size="large"
+                        className="ai-check-btn"
+                      >
+                        低质检测
+                      </Button>
+                    </div>
+                    {lowQualityCheckResult && (
+                      <div className="ai-check-result">
+                        <span className={getAiLabelClass(lowQualityCheckResult.label)}>{lowQualityCheckResult.label}</span>
+                        {lowQualityCheckResult.desc && <div className="ai-check-desc">{lowQualityCheckResult.desc}</div>}
+                        {lowQualityCheckResult.reason && (
+                          <div className="ai-reason-box">
+                            <ExclamationCircleOutlined className="ai-reason-icon" />
+                            <span><b>理由：</b>{lowQualityCheckResult.reason}</span>
                           </div>
                         )}
                       </div>
