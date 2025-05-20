@@ -186,6 +186,22 @@ const lowQualityLabels = [
   { label: '【低质-安全-价值观】', desc: '模型回答中性别歧视、种族歧视、反红色主义、社会现象等' },
 ];
 
+// 用于RAG的简单embedding相似度检索（前端实现，实际生产建议用后端服务）
+function getTopKFactLabels(query: string, answer: string, k = 3) {
+  // 简单拼接问题和回答
+  const text = (query + '\n' + answer).toLowerCase();
+  // 计算每个标签与text的关键词重合度（可替换为更复杂的embedding）
+  return factLabels
+    .map(l => {
+      const labelText = (l.name + ' ' + l.desc).toLowerCase();
+      // 统计重合关键词数
+      const overlap = labelText.split(/[^\w\u4e00-\u9fa5]+/).filter(w => w && text.includes(w)).length;
+      return { ...l, overlap };
+    })
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, k);
+}
+
 // 保证markdown标题格式正确，自动补全换行
 function fixMarkdown(md: string) {
   if (!md) return '';
@@ -344,8 +360,14 @@ function App() {
       const answer = data[currentQuestionIndex].responses[currentModelIndex];
       const labels = type === 'fact' ? factLabels : qualityLabels;
       const labelTypeName = type === 'fact' ? '事实检测标签' : '质量问题标签';
+      // RAG检索增强，仅对事实检测生效
+      let ragInfo = '';
+      if (type === 'fact') {
+        const topLabels = getTopKFactLabels(query, answer, 3);
+        ragInfo = `【检索到的相关事实标签】\n${topLabels.map(l => l.name + '：' + l.desc).join('\n')}\n`;
+      }
       // prompt
-      const prompt = `需开启检索检查模型回答中的问题。\n请根据以下${labelTypeName}体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复\"无符合要求的标签\"。\n\n标签体系：\n${labels.map(l => l.name + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
+      const prompt = `需开启检索检查模型回答中的问题。\n请根据以下${labelTypeName}体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n${ragInfo}【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复\"无符合要求的标签\"。\n\n标签体系：\n${labels.map(l => l.name + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
       const res = await fetch(DEEPSEEK_API_URL, {
         method: 'POST',
         headers: {
