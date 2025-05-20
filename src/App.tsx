@@ -203,7 +203,6 @@ function App() {
   const [manualSearchOptions, setManualSearchOptions] = useState<{ value: string; label: React.ReactNode }[]>([]);
   const [lowQualityCheckLoading, setLowQualityCheckLoading] = useState(false);
   const [lowQualityCheckResult, setLowQualityCheckResult] = useState<{ label: string; desc: string; reason: string } | null>(null);
-  const [lowQualityCheckCache, setLowQualityCheckCache] = useState<{ [key: string]: { label: string; desc: string; reason: string } }>({});
 
   // 流式输出效果
   useEffect(() => {
@@ -329,7 +328,7 @@ function App() {
       const labels = type === 'fact' ? factLabels : qualityLabels;
       const labelTypeName = type === 'fact' ? '事实检测标签' : '质量问题标签';
       // prompt
-      const prompt = `请根据以下${labelTypeName}体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复"无符合要求的标签"。\n\n标签体系：\n${labels.map(l => l.name + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
+      const prompt = `需开启检索检查模型回答中的问题。\n请根据以下${labelTypeName}体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复\"无符合要求的标签\"。\n\n标签体系：\n${labels.map(l => l.name + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
       const res = await fetch(DEEPSEEK_API_URL, {
         method: 'POST',
         headers: {
@@ -409,7 +408,7 @@ function App() {
       const query = data[currentQuestionIndex].query;
       const answer = data[currentQuestionIndex].responses[currentModelIndex];
       const labels = lowQualityLabels;
-      const prompt = `请根据以下低质检测标签体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复\"无符合要求的标签\"。\n\n标签体系：\n${labels.map(l => l.label + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
+      const prompt = `需开启检索检查模型回答中的问题。\n请根据以下低质检测标签体系，判断模型的回答是否存在相关问题，并返回最符合的一个标签名和理由。\n\n【输出格式要求】\n标签名：xxx\n理由：xxx（理由需结合问题和模型回答，简明扼要说明为何判定为该标签）\n\n如果没有符合要求的标签，则只回复\"无符合要求的标签\"。\n\n标签体系：\n${labels.map(l => l.label + '：' + l.desc).join('\n')}\n\n问题：${query}\n\n模型回答：${answer}`;
       const res = await fetch(DEEPSEEK_API_URL, {
         method: 'POST',
         headers: {
